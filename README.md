@@ -1,0 +1,2 @@
+# Paralelismo
+paralelístico
