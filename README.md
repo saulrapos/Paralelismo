@@ -1,2 +1,2 @@
 # Paralelismo
-paralelístico
+paralelístico, paralelo, paralelograno
