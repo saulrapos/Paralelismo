@@ -2,58 +2,83 @@
 #include <stdlib.h>
 #include <math.h>
 #include <mpi.h>
+#include <time.h>
+
+int MPI_BinomialBcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
+    int rank, size, step;
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &size);
+
+    int i = 1;
+    while (i < size) {
+        if (rank < i && rank + i < size) {
+            MPI_Send(buffer, count, datatype, rank + i, 0, comm);
+        } else if (rank >= i && rank < 2 * i) {
+            MPI_Recv(buffer, count, datatype, rank - i, 0, comm, MPI_STATUS_IGNORE);
+        }
+        i *= 2;
+    }
+    return MPI_SUCCESS;
+}
+
+int MPI_FlattreeColectiva(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op,
+                          int root, MPI_Comm comm) {
+    int rank, size, temp, total = 0;
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &size);
+
+    if (rank == root) {
+        total = *((int *)sendbuf);
+        for (int i = 1; i < size; i++) {
+            MPI_Recv(&temp, 1, datatype, i, 0, comm, MPI_STATUS_IGNORE);
+            total += temp;
+        }
+        *((int *)recvbuf) = total;
+    } else {
+        MPI_Send(sendbuf, 1, datatype, root, 0, comm);
+    }
+    return MPI_SUCCESS;
+}
 
 int main(int argc, char *argv[]) {
-    int rank, numprocs, n, i, count_local = 0, count_total = 0;
-    double PI25DT = 3.141592653589793238462643;
-    double pi, x, y, z;
+    int rank, numprocs, n, i, count = 0, total_count = 0;
+    double x, y, z, pi, PI25DT = 3.141592653589793238462643;
 
-    // Inicialización de MPI
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
 
-    // El proceso 0 realiza la entrada de datos
     if (rank == 0) {
-        printf("Enter the number of points: (0 quits)\n");
+        printf("Enter the number of points: (0 quits) \n");
         scanf("%d", &n);
     }
 
-    // Enviar el número de puntos a todos los procesos
-    MPI_Send(&n, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
-    for (int p = 1; p < numprocs; p++) {
-        MPI_Send(&n, 1, MPI_INT, p, 0, MPI_COMM_WORLD);
+    // Reemplazamos MPI_Bcast con nuestra implementación binomial
+    MPI_BinomialBcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    if (n == 0) {
+        MPI_Finalize();
+        return 0;
     }
 
-    // Recibir los puntos locales generados
-    if (rank != 0) {
-        for (i = rank; i <= n; i += numprocs) {
-            x = ((double) rand()) / ((double) RAND_MAX);
-            y = ((double) rand()) / ((double) RAND_MAX);
-            z = sqrt((x * x) + (y * y));
-            if (z <= 1.0) {
-                count_local++;
-            }
-        }
-        // Enviar los resultados al proceso 0
-        MPI_Send(&count_local, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    srand(time(NULL) + rank * 1000);
+
+    for (i = rank; i < n; i += numprocs) {
+        x = ((double) rand()) / RAND_MAX;
+        y = ((double) rand()) / RAND_MAX;
+        z = sqrt((x * x) + (y * y));
+        if (z <= 1.0)
+            count++;
     }
 
-    // El proceso 0 recoge los resultados de todos los procesos
+    // Reemplazamos MPI_Reduce con nuestra colectiva propia tipo flat tree
+    MPI_FlattreeColectiva(&count, &total_count, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
     if (rank == 0) {
-        // Obtener el resultado del proceso 0
-        count_total = count_local;  // Procesar el conteo del propio proceso 0
-        for (int p = 1; p < numprocs; p++) {
-            MPI_Recv(&count_local, 1, MPI_INT, p, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            count_total += count_local;
-        }
-
-        // Calcular y mostrar el valor estimado de π
-        pi = ((double) count_total / (double) n) * 4.0;
+        pi = ((double) total_count / (double) n) * 4.0;
         printf("pi is approx. %.16f, Error is %.16f\n", pi, fabs(pi - PI25DT));
     }
 
-    // Finalización de MPI
     MPI_Finalize();
     return 0;
 }
