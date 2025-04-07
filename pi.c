@@ -30,7 +30,7 @@ int MPI_BinomialBcast(void *buffer, int count, MPI_Datatype datatype, int root, 
     return MPI_SUCCESS;
 }
 
-int MPI_ArbolPlano(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm){
+int MPI_FlattreeColectiva(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm){
     int rank, size, temp, total = 0; //Temp: variable aux para recibir datos de otros procs, Total: acumulador que usará el root.
     MPI_Comm_rank(comm, &rank); //Id del proceso
     MPI_Comm_size(comm, &size); //Número de procesos
@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
     }
 
     //Reemplazamos MPI_Reduce con nuestra colectiva propia tipo arbol plano
-    MPI_ArbolPlano(&count, &total_count, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_FlattreeColectiva(&count, &total_count, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
     //Devolvemos la aproximación de pi y el error
     if (rank == 0) {
